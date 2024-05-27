@@ -8,16 +8,17 @@ def unzip_and_move(src_zip, dest_dir):
 	if not os.path.exists(dest_dir):
 		os.makedirs(dest_dir)
 
-	shutil.rmtree(f"{dest_dir}\\blender-4.1")
+	shutil.rmtree(f"{dest_dir}\\blender")
 
 	with zipfile.ZipFile(src_zip, 'r') as zip_ref:
 		zip_ref.extractall(dest_dir)
 
 	temporal = src_zip.split('\\')[-1].replace('.zip','')
 
-	os.rename(f"{dest_dir}\\{temporal}", f"{dest_dir}\\blender-4.1")
+	os.rename(f"{dest_dir}\\{temporal}", f"{dest_dir}\\blender")
 	print(f"Unzipped files fueron movidos a {dest_dir}")
 
+os.chdir(r"E:\win\Downloads")
 files = [f for f in os.listdir() if (f.startswith('blender') and f.endswith('.zip'))]
 files.sort(key=os.path.getmtime)
 
@@ -27,4 +28,4 @@ src_zip = files[-1]		#descomprimiendo el ultimo (mas nuevo) de la lista
 if os.path.exists(src_zip):
 	print(f"desComprimiendo: {src_zip}")
 
-unzip_and_move(src_zip ,'E:\\Progs\\art3d')
+unzip_and_move(src_zip ,'E:\\apps\\art3d')
