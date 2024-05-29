@@ -1,4 +1,4 @@
-#aqui actualizamos la version de blender a la ultima descargada..
+#Este script es para actualizar blender portable a la ultima descargada (segun fecha)
 import zipfile
 import shutil
 import os
