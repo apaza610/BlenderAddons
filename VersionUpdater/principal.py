@@ -4,8 +4,8 @@ import os
 import sys
 
 folderDwnld = "E:\\win\\Downloads"
-folderDstno = "E:\\apps\\art3d"
-folderFinal = f"{folderDstno}\\blender-4.4"
+folderDstno = "C:\\orozco\\"
+folderFinal = f"{folderDstno}\\blender-4.5"
 
 os.chdir(folderDwnld)
 
