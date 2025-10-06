@@ -3,7 +3,7 @@ import csv
 import os
 
 blend_dir = bpy.path.abspath("//")
-csv_path = os.path.join(blend_dir, "your_file.csv")  # Replace with your actual filename
+csv_path = os.path.join(blend_dir, "listaOUT.csv")  # Replace with your actual filename
 
 with open(csv_path, newline='', encoding='utf-8') as csvfile:
     reader = csv.reader(csvfile)

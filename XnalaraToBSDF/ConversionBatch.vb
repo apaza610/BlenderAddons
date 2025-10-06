@@ -1,112 +1,127 @@
 Sub Main
-	Dim oSheet1 As Object
+    Dim sFilePath As String
+    Dim sFileFoldr As String
+    Dim i As Integer
+    Dim maxElements As Long
+    Dim oSheet1 As Object
     Dim oSheet2 As Object
-    Dim oCell As Object
-    Dim oTargetCell As Object
-    
-    Dim sFilePath As String		' E:\apps\art3d\XNALara XPS\11.8.9\data\SilentHill\Douglas\prueba.csv
-    Dim sFileFoldr As String		' E:\apps\art3d\XNALara XPS\11.8.9\data\SilentHill\Douglas
-    Dim i as Integer
-    
-    sFilePath = ThisComponent.URL				' Get the URL of the current document
-    sFilePath = ConvertFromURL(sFilePath)		' Convert URL to system path
-    'MsgBox "Current file path: " & sFilePath	 
-    MsgBox GetPadreFolder(sFilePath)				' Get parent folder	
-    
+
+    ' Get document path
+    sFilePath = ThisComponent.URL
+    sFilePath = ConvertFromURL(sFilePath)
+
+    If sFilePath = "" Then
+        MsgBox "Please save the spreadsheet before running this macro."
+        Exit Sub
+    End If
+
+    sFileFoldr = GetPadreFolder(sFilePath)
+
+    ' Ask for max elements to process
+    maxElements = InputBox("Enter maximum number of elements to process per column:", "Max Elements", "100")
+    If maxElements <= 0 Then
+        MsgBox "Operation cancelled."
+        Exit Sub
+    End If
+
+    ' Ensure destination sheet
     EnsureSheetExists("Sheet2")
-    oSheet1 = ThisComponent.Sheets(0) ' first sheet			' Get the sheets
+    oSheet1 = ThisComponent.Sheets(0)
     oSheet2 = ThisComponent.Sheets.getByName("Sheet2")
-    
-    Dim colValues As String
-    CopyColumnWithSuffix("B", "copia", "_D")
-    CopyColumnWithSuffix("H", "extractalfa","_A")
+
+    ' Process columns
+    CopyColumnWithSuffix "B", "copia", "_D", maxElements
+    CopyColumnWithSuffix "H", "extractalfa", "_A", maxElements
+    CopyColumnWithSuffix "F", "invertgreen", "_NG", maxElements
+    CopyColumnWithSuffix "D", "invertir", "_R", maxElements
 End Sub
 
-Function GetPadreFolder(sFilePath)
-	For i = Len(sFilePath) To 1 Step -1
-		If Mid(sFilePath, i, 1) = "\" Then
-			sFileFoldr = Left(sFilePath, i-1)
-			Exit For
-		End If
-	Next i
-	GetPadreFolder = sFileFoldr
+
+' --------------------------- Utilities ---------------------------
+
+Function GetPadreFolder(sFilePath As String) As String
+    Dim i As Long, sFileFoldr As String
+    For i = Len(sFilePath) To 1 Step -1
+        If Mid(sFilePath, i, 1) = "\" Then
+            sFileFoldr = Left(sFilePath, i - 1)
+            Exit For
+        End If
+    Next i
+    GetPadreFolder = sFileFoldr
 End Function
+
 
 Sub EnsureSheetExists(sheetName As String)
     Dim oSheets As Object
-    Dim oSheet As Object
-    Dim i As Long
-    Dim found As Boolean
-    
+    Dim i As Long, found As Boolean
     oSheets = ThisComponent.Sheets
     found = False
-    
-    For i = 0 To oSheets.getCount() - 1							' Check if sheet already exists
+    For i = 0 To oSheets.getCount() - 1
         If oSheets.getByIndex(i).Name = sheetName Then
             found = True
             Exit For
         End If
     Next i
-    
-    If Not found Then							' create a new sheet
+    If Not found Then
         oSheets.insertNewByName(sheetName, oSheets.getCount())
     End If
 End Sub
 
-' ---------------------------------------------------------------------------------------------------------------
-Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As String)
-    Dim oDoc As Object
-    Dim oSheetSrc As Object, oSheetDest As Object
-    Dim colIndex As Long, lastRow As Long
-    Dim i As Long, j As Long
-    Dim oCellSrc As Object, oCellDest As Object
-    Dim sValue As String, newValue As String
-    Dim baseName As String, ext As String
-    Dim dotPos As Long
+
+Function LastDotPos(s As String) As Long
+    Dim p As Long
+    For p = Len(s) To 1 Step -1
+        If Mid(s, p, 1) = "." Then
+            LastDotPos = p
+            Exit Function
+        End If
+    Next p
+    LastDotPos = 0
+End Function
+
+
+' --------------------------- Core Function ---------------------------
+
+Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As String, maxElements As Long)
+    Dim oDoc As Object, oSheetSrc As Object, oSheetDest As Object
+    Dim colIndex As Long, lastRow As Long, i As Long
+    Dim data As Variant, resultData() As Variant
     Dim sFileFolder As String
-    Dim sourcePath As String, targetPath As String
+    Dim sValue As String, baseName As String, ext As String, dotPos As Long
+    Dim batchFile As String, batchFileNum As Integer
     Dim processed As Long
-    Dim cmd As String, wsh As Object
+    Dim wsh As Object, cmdLine As String
 
     oDoc = ThisComponent
     oSheetSrc = oDoc.CurrentController.ActiveSheet
-
-    ' Ensure Sheet2 exists and get reference
     EnsureSheetExists "Sheet2"
     oSheetDest = oDoc.Sheets.getByName("Sheet2")
 
-    ' Determine folder of the current document
     If oDoc.getURL() = "" Then
-        MsgBox "Please save the spreadsheet before running this macro."
+        MsgBox "Please save the spreadsheet first."
         Exit Sub
     End If
     sFileFolder = GetPadreFolder(ConvertFromURL(oDoc.getURL()))
-    
-    colIndex = Asc(UCase(colLetter)) - Asc("A")			' Convert column letter (A → 0, B → 1, etc.)
+    colIndex = Asc(UCase(colLetter)) - Asc("A")
 
-    lastRow = 1									' Find last used row
-    Dim totalRows As Long
-    totalRows = oSheetSrc.getRows().getCount() - 1
-    For i = 1 To totalRows
-        If Trim(oSheetSrc.getCellByPosition(colIndex, i).getString()) <> "" Then lastRow = i
-    Next i
+    ' ⚡ NEW: Just read up to maxElements (no full-column scan)
+    lastRow = maxElements
+    data = oSheetSrc.getCellRangeByPosition(colIndex, 1, colIndex, lastRow).getDataArray()
+    ReDim resultData(UBound(data)) As Variant
+
+    ' prepare batch file
+    batchFile = sFileFolder & "\_bulk_" & actionType & ".cmd"
+    batchFileNum = FreeFile
+    Open batchFile For Output As #batchFileNum
+    Print #batchFileNum, "@echo off"
+    Print #batchFileNum, "cd /d """ & sFileFolder & """"
 
     processed = 0
 
-    ' Loop rows starting from B2 (index 1)
-    For i = 1 To lastRow
-        oCellSrc = oSheetSrc.getCellByPosition(colIndex, i)
-        sValue = Trim(oCellSrc.getString())
+    For i = LBound(data) To UBound(data)
+        sValue = Trim(data(i)(0))
         If sValue <> "" Then
-            ' Find last dot
-            dotPos = 0
-            For j = Len(sValue) To 1 Step -1
-                If Mid(sValue, j, 1) = "." Then
-                    dotPos = j
-                    Exit For
-                End If
-            Next j
-
+            dotPos = LastDotPos(sValue)
             If dotPos > 0 Then
                 baseName = Left(sValue, dotPos - 1)
                 ext = Mid(sValue, dotPos)
@@ -115,40 +130,44 @@ Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As St
                 ext = ""
             End If
 
-            newValue = baseName & suffix & ext
-            sourcePath = sFileFolder & "\" & sValue
-            targetPath = sFileFolder & "\" & newValue
-
             Select Case LCase(actionType)
                 Case "copia"
-                    On Error Resume Next
-                    FileCopy sourcePath, targetPath
-                    On Error GoTo 0
+                    Print #batchFileNum, "copy """ & sValue & """ """ & baseName & suffix & ext & """"
+                    resultData(i) = Array(baseName & suffix & ext)
 
                 Case "extractalfa"
-                    Dim alphaName As String, alphaPath As String
-                    alphaName = baseName & "_A" & ext
-                    alphaPath = sFileFolder & "\" & alphaName
-                    cmd = "magick convert " & Chr(34) & sourcePath & Chr(34) & " -alpha extract " & Chr(34) & alphaPath & Chr(34)
+                    Print #batchFileNum, "magick convert """ & sValue & """ -alpha extract """ & baseName & suffix & ext & """"
+                    resultData(i) = Array(baseName & suffix & ext)
 
-                    On Error Resume Next
-                    Set wsh = CreateObject("WScript.Shell")
-                    If Err.Number = 0 Then
-                        wsh.Run Environ("COMSPEC") & " /c " & cmd, 0, True
-                    Else
-                        Shell(Environ("COMSPEC") & " /c " & cmd, 0)
-                    End If
-                    On Error GoTo 0
+                Case "invertgreen"
+                    Print #batchFileNum, "magick convert """ & sValue & """ -channel G -negate """ & baseName & suffix & ext & """"
+                    resultData(i) = Array(baseName & suffix & ext)
 
-                    newValue = alphaName
+                Case "invertir"
+                    Print #batchFileNum, "magick convert """ & sValue & """ -negate """ & baseName & suffix & ext & """"
+                    resultData(i) = Array(baseName & suffix & ext)
+
+                Case Else
+                    resultData(i) = Array("")
             End Select
-            
-            oCellDest = oSheetDest.getCellByPosition(colIndex, i)	' Write result into Sheet2 same position
-            oCellDest.String = newValue
+
             processed = processed + 1
+        Else
+            resultData(i) = Array("")
         End If
     Next i
 
-    MsgBox "Action '" & actionType & "' completed on column " & colLetter & " — " & processed & " entries processed."
+    Close #batchFileNum
+
+    ' write results fast
+    oSheetDest.getCellRangeByPosition(colIndex, 1, colIndex, lastRow).setDataArray(resultData)
+
+    ' run batch silently
+    Set wsh = CreateObject("WScript.Shell")
+    cmdLine = "cmd.exe /c """ & batchFile & """"
+    wsh.Run cmdLine, 0, True
+
+    MsgBox "Action '" & actionType & "' completed on column " & colLetter & _
+           " — " & processed & " entries processed."
 End Sub
 

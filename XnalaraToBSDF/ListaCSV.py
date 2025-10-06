@@ -2,7 +2,7 @@ import bpy
 import csv
 
 # Output path
-output_path = bpy.path.abspath("//materials_group_inputs.csv")
+output_path = bpy.path.abspath("//lista.csv")
 
 # Helper to get texture name from a Group node input
 def get_texture_name_from_input(mat, input_name):
