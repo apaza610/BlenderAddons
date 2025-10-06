@@ -30,10 +30,13 @@ Sub Main
     oSheet2 = ThisComponent.Sheets.getByName("Sheet2")
 
     ' Process columns
+    CopyColumnWithSuffix "A", "nones", "", maxElements
     CopyColumnWithSuffix "B", "copia", "_D", maxElements
-    CopyColumnWithSuffix "H", "extractalfa", "_A", maxElements
-    CopyColumnWithSuffix "F", "invertgreen", "_NG", maxElements
     CopyColumnWithSuffix "D", "invertir", "_R", maxElements
+    CopyColumnWithSuffix "F", "invertgreen", "_NG", maxElements
+    CopyColumnWithSuffix "H", "extractalfa", "_A", maxElements
+        
+    ExportSheet2AsCSV
 End Sub
 
 
@@ -131,6 +134,10 @@ Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As St
             End If
 
             Select Case LCase(actionType)
+	             Case "nones"
+			        ' Only copy to Sheet2, do not alter files or batch
+			        resultData(i) = Array(sValue)
+			        
                 Case "copia"
                     Print #batchFileNum, "copy """ & sValue & """ """ & baseName & suffix & ext & """"
                     resultData(i) = Array(baseName & suffix & ext)
@@ -171,3 +178,29 @@ Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As St
            " — " & processed & " entries processed."
 End Sub
 
+' ------------------------------------------------------------
+Sub ExportSheet2AsCSV()
+    Dim oDoc As Object
+    Dim sFileFolder As String, sFileName As String
+    Dim args(1) As New com.sun.star.beans.PropertyValue
+
+    oDoc = ThisComponent
+
+    ' Make Sheet2 active
+    oDoc.CurrentController.setActiveSheet(oDoc.Sheets.getByName("Sheet2"))
+
+    ' CSV path
+    sFileFolder = GetPadreFolder(ConvertFromURL(oDoc.URL))
+    sFileName = sFileFolder & "\listaOUT.csv"
+
+    ' CSV export properties
+    args(0).Name = "FilterName"
+    args(0).Value = "Text - txt - csv (StarCalc)"
+    args(1).Name = "FilterOptions"
+    args(1).Value = "44,34,0,1"  ' comma, quote, no page break, export only active sheet
+
+    ' Export
+    oDoc.storeToURL(ConvertToURL(sFileName), args)
+
+    MsgBox "Sheet2 saved as " & sFileName
+End Sub
