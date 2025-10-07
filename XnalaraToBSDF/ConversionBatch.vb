@@ -84,35 +84,33 @@ End Function
 
 
 ' --------------------------- Core Function ---------------------------
-
 Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As String, maxElements As Long)
     Dim oDoc As Object, oSheetSrc As Object, oSheetDest As Object
     Dim colIndex As Long, lastRow As Long, i As Long
     Dim data As Variant, resultData() As Variant
-    Dim sFileFolder As String
+    Dim sFileFolder As String, sTextureFolder As String
     Dim sValue As String, baseName As String, ext As String, dotPos As Long
     Dim batchFile As String, batchFileNum As Integer
     Dim processed As Long
-    Dim wsh As Object, cmdLine As String
+    Dim fso As Object, shellObj As Object, cmdLine As String
+    Dim outPath As String
 
     oDoc = ThisComponent
     oSheetSrc = oDoc.CurrentController.ActiveSheet
     EnsureSheetExists "Sheet2"
     oSheetDest = oDoc.Sheets.getByName("Sheet2")
 
-    If oDoc.getURL() = "" Then
-        MsgBox "Please save the spreadsheet first."
-        Exit Sub
-    End If
     sFileFolder = GetPadreFolder(ConvertFromURL(oDoc.getURL()))
-    colIndex = Asc(UCase(colLetter)) - Asc("A")
+    sTextureFolder = sFileFolder & "\texturas"
 
-    ' ⚡ NEW: Just read up to maxElements (no full-column scan)
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(sTextureFolder) Then fso.CreateFolder(sTextureFolder)
+
+    colIndex = Asc(UCase(colLetter)) - Asc("A")
     lastRow = maxElements
     data = oSheetSrc.getCellRangeByPosition(colIndex, 1, colIndex, lastRow).getDataArray()
     ReDim resultData(UBound(data)) As Variant
 
-    ' prepare batch file
     batchFile = sFileFolder & "\_bulk_" & actionType & ".cmd"
     batchFileNum = FreeFile
     Open batchFile For Output As #batchFileNum
@@ -124,6 +122,7 @@ Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As St
     For i = LBound(data) To UBound(data)
         sValue = Trim(data(i)(0))
         If sValue <> "" Then
+            ' <-- use LastDotPos (your helper above) instead of InStrRev
             dotPos = LastDotPos(sValue)
             If dotPos > 0 Then
                 baseName = Left(sValue, dotPos - 1)
@@ -134,25 +133,29 @@ Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As St
             End If
 
             Select Case LCase(actionType)
-	             Case "nones"
-			        ' Only copy to Sheet2, do not alter files or batch
-			        resultData(i) = Array(sValue)
-			        
+                Case "nones"
+                    ' just copy as-is, no texturas, no .jpg
+                    resultData(i) = Array(sValue)
+
                 Case "copia"
-                    Print #batchFileNum, "copy """ & sValue & """ """ & baseName & suffix & ext & """"
-                    resultData(i) = Array(baseName & suffix & ext)
-
-                Case "extractalfa"
-                    Print #batchFileNum, "magick convert """ & sValue & """ -alpha extract """ & baseName & suffix & ext & """"
-                    resultData(i) = Array(baseName & suffix & ext)
-
-                Case "invertgreen"
-                    Print #batchFileNum, "magick convert """ & sValue & """ -channel G -negate """ & baseName & suffix & ext & """"
-                    resultData(i) = Array(baseName & suffix & ext)
+                    outPath = "texturas\" & baseName & suffix & ".jpg"
+                    Print #batchFileNum, "magick convert """ & sValue & """ """ & outPath & """"
+                    resultData(i) = Array(outPath)
 
                 Case "invertir"
-                    Print #batchFileNum, "magick convert """ & sValue & """ -negate """ & baseName & suffix & ext & """"
-                    resultData(i) = Array(baseName & suffix & ext)
+                    outPath = "texturas\" & baseName & suffix & ".jpg"
+                    Print #batchFileNum, "magick convert """ & sValue & """ -negate """ & outPath & """"
+                    resultData(i) = Array(outPath)
+
+                Case "invertgreen"
+                    outPath = "texturas\" & baseName & suffix & ".jpg"
+                    Print #batchFileNum, "magick convert """ & sValue & """ -channel G -negate """ & outPath & """"
+                    resultData(i) = Array(outPath)
+
+                Case "extractalfa"
+                    outPath = "texturas\" & baseName & suffix & ".jpg"
+                    Print #batchFileNum, "magick convert """ & sValue & """ -alpha extract """ & outPath & """"
+                    resultData(i) = Array(outPath)
 
                 Case Else
                     resultData(i) = Array("")
@@ -166,17 +169,15 @@ Sub CopyColumnWithSuffix(colLetter As String, actionType As String, suffix As St
 
     Close #batchFileNum
 
-    ' write results fast
     oSheetDest.getCellRangeByPosition(colIndex, 1, colIndex, lastRow).setDataArray(resultData)
 
-    ' run batch silently
-    Set wsh = CreateObject("WScript.Shell")
+    Set shellObj = CreateObject("WScript.Shell")
     cmdLine = "cmd.exe /c """ & batchFile & """"
-    wsh.Run cmdLine, 0, True
+    shellObj.Run cmdLine, 0, True
 
-    MsgBox "Action '" & actionType & "' completed on column " & colLetter & _
-           " — " & processed & " entries processed."
+    MsgBox "Action '" & actionType & "' completed for column " & colLetter & " (" & processed & " processed)."
 End Sub
+
 
 ' ------------------------------------------------------------
 Sub ExportSheet2AsCSV()
